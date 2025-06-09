@@ -1,0 +1,140 @@
+from hub import light_matrix, motion_sensor, port
+import color
+import runloop
+import force_sensor
+import motor
+import color_sensor
+import time
+
+VELOCIDADE = 250
+VELO_CURVA = 150 #velocidade em que a roda volta para tras em uma curva
+LIMIAR = 60
+TEMP_ENTRE_CRUZ = 1500
+ENCRUZILHADAS = 4
+TEMPO_FINAL = 2000 #tempo que o robo andara apos encontrar a ultima encruzilhada(em ms)
+
+
+SENSOR_ESQUERDO = port.A
+SENSOR_DIREITO = port.B
+MOTOR_PRINCIPAL = port.E
+MOTOR_RODA_ESQUERDA = port.C
+MOTOR_RODA_DIREITA = port.D
+vel_mot_esq = vel_mot_dir = 0
+SENSOR_ISOLADO = port.F
+
+# portA = sensor lado esquerdo
+# portB = sensor lado direito
+# portC =  motor roda esquerda (invertida)
+# portD = motor roda direita
+# portE = motor principal (mal funcionamente)
+# portF = sensor isolado
+
+def motores(veE, veD):
+    # motor esquerdo esta invertido
+    veE = - veE
+    motor.run(MOTOR_RODA_DIREITA, veD)
+    motor.run(MOTOR_RODA_ESQUERDA, veE)
+
+def frente(velocidade):
+    motores(velocidade, velocidade)
+
+def virar_direita(velocidadeCurva, velocidade):
+    motores (velocidade, velocidadeCurva)
+
+def virar_esquerda(velocidadeCurva, velocidade):
+    motores (velocidadeCurva, velocidade)
+
+def girar_esquerda(velocidade, VELO_CURVA_RECUO):
+    motores(-VELO_CURVA_RECUO, velocidade)
+
+def girar_direita(velocidade, VELO_CURVA_RECUO):
+    motores(velocidade, -VELO_CURVA_RECUO)
+
+def parar():
+    motores(0, 0)
+
+def girar_eixo_horario(velocidade):
+    motores(velocidade, -velocidade)
+
+def girar_eixo_antihorario(velocidade):
+    motores(-velocidade, velocidade)
+
+def imprimir_reflexao(rA, rB):
+    print('A:', rA)
+    print('B:', rB)
+
+def encruzilhada (rC, ult_atu_cont, cont_filtro, cont_cruz):
+    agora = time.ticks_ms()
+
+    if(rC > LIMIAR):
+        cont_filtro += 1
+
+        if(cont_filtro > 3):
+            agora = time.ticks_ms()
+            if(ult_atu_cont + TEMP_ENTRE_CRUZ < agora):
+                cont_cruz += 1
+                light_matrix.write(str(cont_cruz))
+                ult_atu_cont = agora
+    else:
+        cont_filtro = 0
+
+    return ult_atu_cont,cont_filtro, cont_cruz
+
+
+def seguir_linha(rA, rB, LIMIAR):
+
+    se_esquerdo_preto = False #se sensor ESQUERDO encontrou a cor PRETA
+    se_direito_preto = False #se sensor DIREITO encontrou a cor PRETA
+
+    if rB < LIMIAR:
+        se_direito_preto = True
+    if rA < LIMIAR:
+        se_esquerdo_preto = True
+
+    if se_esquerdo_preto and not se_direito_preto:
+        virar_direita(VELO_CURVA, VELOCIDADE)
+    elif not se_esquerdo_preto and se_direito_preto:
+        virar_esquerda(VELO_CURVA)
+    else :
+        frente (VELOCIDADE)
+
+    
+
+
+
+def atualizar_sensores():
+    rA = color_sensor.reflection(SENSOR_ESQUERDO)
+    rB = color_sensor.reflection(SENSOR_DIREITO)
+    rC = color_sensor.reflection(SENSOR_ISOLADO)
+    return rA, rB, rC
+
+
+async def main():
+    
+    ult_atu_cruz = 0
+    cont_filtro = 0
+    cont_cruz = 0;
+
+    while cont_cruz < ENCRUZILHADAS:
+    
+        rA,rB,rC = atualizar_sensores()
+        seguir_linha(rA, rB, LIMIAR)
+        ult_atu_cruz, cont_filtro, cont_cruz = encruzilhada(rC, ult_atu_cruz, cont_filtro, cont_cruz)
+        time.sleep_ms(10)
+    ult_atu = time.ticks_ms()
+
+
+    while ult_atu + TEMPO_FINAL > time.ticks_ms() :
+        rA,rB,rC = atualizar_sensores()
+        seguir_linha(rA, rB, LIMIAR)
+    
+    parar()
+    
+
+    while True:
+        pass
+
+        
+
+
+runloop.run(main())
